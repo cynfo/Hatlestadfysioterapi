@@ -1204,6 +1204,19 @@
     color: var(--color-text-muted);
   }
 
+  .form-error {
+    border-color: #b3261e;
+  }
+
+  .form-error h4 {
+    color: #b3261e;
+  }
+
+  .form-error a {
+    color: var(--color-primary);
+    text-decoration: underline;
+  }
+
   /* ============================================
      FOOTER
      ============================================ */
@@ -1825,6 +1838,13 @@
           <p>Vi tar kontakt så snart som mulig, og senest innen én virkedag.</p>
         </div>
 
+        <div class="form-success form-error" id="formError" role="alert">
+          <h4>Noe gikk galt</h4>
+          <p>Henvendelsen ble ikke sendt. Prøv igjen, eller ring oss på <a href="tel:+4740614667">406 14 667</a> / send e-post til <a href="mailto:bjen153@gmail.com">bjen153@gmail.com</a>.</p>
+        </div>
+
+        <input type="text" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;" />
+
         <div class="form-group">
           <label for="name">Navn <span class="req" aria-hidden="true">*</span></label>
           <input type="text" id="name" name="name" class="form-input" required autocomplete="name" />
@@ -2010,8 +2030,20 @@
   const form = document.getElementById("contactForm");
   const formSuccess = document.getElementById("formSuccess");
 
-  form.addEventListener("submit", (e) => {
+  const formError = document.getElementById("formError");
+  const submitBtn = form.querySelector(".form-submit");
+  const submitLabel = submitBtn.textContent;
+  const FORM_ENDPOINT = "https://formsubmit.co/ajax/bjen153@gmail.com";
+
+  const setFormDisabled = (disabled) => {
+    form.querySelectorAll("input, textarea, select, button").forEach((el) => {
+      el.disabled = disabled;
+    });
+  };
+
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    formError.classList.remove("show");
 
     // Native HTML5 validation
     if (!form.checkValidity()) {
@@ -2019,23 +2051,51 @@
       return;
     }
 
-    // Simulate submission
-    formSuccess.classList.add("show");
-    form.querySelectorAll("input, textarea, select, button").forEach((el) => {
-      if (el.type !== "button") el.disabled = true;
-    });
+    const data = Object.fromEntries(new FormData(form).entries());
 
-    // Smoothly scroll the success message into view
-    formSuccess.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Honeypot: bots fill the hidden field, humans don't
+    if (data._honey) return;
 
-    // Reset after 6 seconds so the user can submit again if needed
-    setTimeout(() => {
-      form.reset();
-      formSuccess.classList.remove("show");
-      form.querySelectorAll("input, textarea, select, button").forEach((el) => {
-        el.disabled = false;
+    const serviceSelect = form.querySelector("#service");
+    const payload = {
+      _subject: "Ny henvendelse fra nettsiden – " + data.name,
+      _template: "table",
+      _replyto: data.email || undefined,
+      Navn: data.name,
+      Telefon: data.phone,
+      "Fødselsdato": data.birthdate,
+      "E-post": data.email || "(ikke oppgitt)",
+      Tjeneste: serviceSelect.value ? serviceSelect.options[serviceSelect.selectedIndex].text : "(ikke valgt)",
+      Melding: data.message
+    };
+
+    submitBtn.textContent = "Sender …";
+    setFormDisabled(true);
+
+    try {
+      const res = await fetch(FORM_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload)
       });
-    }, 6000);
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || String(result.success) === "false") {
+        throw new Error(result.message || "Innsending feilet");
+      }
+
+      form.reset();
+      formSuccess.classList.add("show");
+      formSuccess.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      // Hide the confirmation after a while so the user can submit again if needed
+      setTimeout(() => formSuccess.classList.remove("show"), 8000);
+    } catch (err) {
+      formError.classList.add("show");
+      formError.scrollIntoView({ behavior: "smooth", block: "center" });
+    } finally {
+      submitBtn.textContent = submitLabel;
+      setFormDisabled(false);
+    }
   });
 
   /* ============================================
